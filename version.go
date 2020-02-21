@@ -8,53 +8,54 @@ import (
 	"strings"
 )
 
-const allowed string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
-const semVerRegex string = `v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?` + `(-([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?` + `(\+([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?`
+var allowed string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
+var versionRegex = regexp.MustCompile(`^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?(\+([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?$`)
 
-var (
-	versionRegex *regexp.Regexp
+type versions []*version
 
-	// ErrInvalidSemVer is returned a version is found to be invalid when
-	// being parsed.
-	ErrInvalidSemVer = errors.New("Invalid Semantic Version")
-)
+func (v versions) Len() int           { return len(v) }
+func (v versions) Less(i, j int) bool { return v[i].compare(v[j]) < 0 }
+func (v versions) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 
-// Version represents a single semantic version.
-type Version struct {
+// version represents a single semantic version.
+type version struct {
 	major, minor, patch uint64
-	pre                 string
+	prerelease          string
 	metadata            string
 	original            string
 }
 
-func init() {
-	versionRegex = regexp.MustCompile("^" + semVerRegex + "$")
-}
-
-// NewVersion parses a given version and returns an instance of Version or
-// an error if unable to parse the version. If the version is SemVer-ish it
-// attempts to convert it to SemVer. If you want  to validate it was a strict
-// semantic version at parse time see StrictNewVersion().
-func NewVersion(v string) (*Version, error) {
+// parseVersion parses a given version string
+func parseVersion(v string) (*version, error) {
 	m := versionRegex.FindStringSubmatch(v)
 	if m == nil {
-		return nil, ErrInvalidSemVer
-	}
-
-	sv := &Version{
-		metadata: m[8],
-		pre:      m[5],
-		original: v,
+		return nil, errors.New("Invalid Semantic Version")
 	}
 
 	var err error
-	sv.major, err = strconv.ParseUint(m[1], 10, 64)
+
+	// Regex breakdown
+	major := m[1]
+	minor := m[2]
+	patch := m[3]
+	prerelease := m[5]
+	metadata := m[8]
+
+	sv := &version{
+		prerelease: prerelease,
+		metadata:   metadata,
+		original:   v,
+	}
+
+	// Major check
+	sv.major, err = strconv.ParseUint(major, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing version segment: %s", err)
 	}
 
-	if m[2] != "" {
-		sv.minor, err = strconv.ParseUint(strings.TrimPrefix(m[2], "."), 10, 64)
+	// Minor check
+	if minor != "" {
+		sv.minor, err = strconv.ParseUint(strings.TrimPrefix(minor, "."), 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("Error parsing version segment: %s", err)
 		}
@@ -62,8 +63,9 @@ func NewVersion(v string) (*Version, error) {
 		sv.minor = 0
 	}
 
-	if m[3] != "" {
-		sv.patch, err = strconv.ParseUint(strings.TrimPrefix(m[3], "."), 10, 64)
+	// Patch check
+	if patch != "" {
+		sv.patch, err = strconv.ParseUint(strings.TrimPrefix(patch, "."), 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("Error parsing version segment: %s", err)
 		}
@@ -71,14 +73,14 @@ func NewVersion(v string) (*Version, error) {
 		sv.patch = 0
 	}
 
-	// Validate pre release
-	if sv.pre != "" {
-		if err = validatePrerelease(sv.pre); err != nil {
+	// Prerelease check
+	if sv.prerelease != "" {
+		if err = validatePrerelease(sv.prerelease); err != nil {
 			return nil, err
 		}
 	}
 
-	// Validate metadata
+	// Metadata check
 	if sv.metadata != "" {
 		if err = validateMetadata(sv.metadata); err != nil {
 			return nil, err
@@ -88,6 +90,42 @@ func NewVersion(v string) (*Version, error) {
 	return sv, nil
 }
 
+func (v *version) compare(v2 *version) int {
+	if d := compareSegment(v.major, v2.major); d != 0 {
+		return d
+	}
+	if d := compareSegment(v.minor, v2.minor); d != 0 {
+		return d
+	}
+	if d := compareSegment(v.patch, v2.patch); d != 0 {
+		return d
+	}
+
+	// Major, minor, and patch are the same lets check prerelease
+	if v.prerelease == "" && v2.prerelease == "" {
+		return 0
+	}
+	if v.prerelease == "" {
+		return 1
+	}
+	if v2.prerelease == "" {
+		return -1
+	}
+
+	return 0
+}
+
+func compareSegment(v, o uint64) int {
+	if v < o {
+		return -1
+	}
+	if v > o {
+		return 1
+	}
+
+	return 0
+}
+
 // Like strings.ContainsAny but does an only instead of any.
 func containsOnly(s string, comp string) bool {
 	return strings.IndexFunc(s, func(r rune) bool {
@@ -95,10 +133,7 @@ func containsOnly(s string, comp string) bool {
 	}) == -1
 }
 
-// From the spec, "Identifiers MUST comprise only
-// ASCII alphanumerics and hyphen [0-9A-Za-z-]. Identifiers MUST NOT be empty.
-// Numeric identifiers MUST NOT include leading zeroes.". These segments can
-// be dot separated.
+// validatePrerelease loops through values to check for valid characters
 func validatePrerelease(p string) error {
 	eparts := strings.Split(p, ".")
 	for _, p := range eparts {
@@ -110,14 +145,10 @@ func validatePrerelease(p string) error {
 			return errors.New("Invalid Prerelease string")
 		}
 	}
-
 	return nil
 }
 
-// From the spec, "Build metadata MAY be denoted by
-// appending a plus sign and a series of dot separated identifiers immediately
-// following the patch or pre-release version. Identifiers MUST comprise only
-// ASCII alphanumerics and hyphen [0-9A-Za-z-]. Identifiers MUST NOT be empty."
+// validateMetadata loops through values to check for valid characters
 func validateMetadata(m string) error {
 	eparts := strings.Split(m, ".")
 	for _, p := range eparts {
