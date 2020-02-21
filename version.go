@@ -8,13 +8,13 @@ import (
 	"strings"
 )
 
-var allowed string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
+var allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
 var versionRegex = regexp.MustCompile(`^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?(\+([0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*))?$`)
 
 type versions []*version
 
 func (v versions) Len() int           { return len(v) }
-func (v versions) Less(i, j int) bool { return v[i].compare(v[j]) < 0 }
+func (v versions) Less(i, j int) bool { return v[i].compare(v[j]) > 0 }
 func (v versions) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
 
 // version represents a single semantic version.
