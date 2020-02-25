@@ -3,7 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -25,7 +28,35 @@ type version struct {
 	original            string
 }
 
-// parseVersion parses a given version string
+func getProxyVersions(url string) versions {
+	resp, err := http.Get(fmt.Sprintf("https://proxy.golang.org/%s/@v/list", url))
+	if err != nil {
+		panic(err)
+	}
+
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	var vs versions
+	versionsString := strings.Split(string(body), "\n")
+	for _, vss := range versionsString {
+		v, err := parseVersion(vss)
+		if err != nil {
+			// If has error parsing skip it
+			continue
+		}
+		vs = append(vs, v)
+	}
+	sort.Sort(vs)
+
+	return vs
+}
+
+// parseVersion parses a given version mod
 func parseVersion(v string) (*version, error) {
 	m := versionRegex.FindStringSubmatch(v)
 	if m == nil {
