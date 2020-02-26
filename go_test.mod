@@ -1,4 +1,4 @@
-module bitbucket.org/fluidpay/api
+module github.com/brianvoe/gomod-check
 
 go 1.13
 
