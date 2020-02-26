@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"sort"
 
 	"github.com/abiosoft/ishell"
 	"github.com/brianvoe/gofakeit"
@@ -11,30 +12,30 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
-var fileName = "go.mod"
+// FileName is the main file used for parsing
+var FileName = "go.mod"
 
 func main() {
 	gofakeit.BS()
 
 	// Read in go mod file
-	dat, err := ioutil.ReadFile("./" + fileName)
+	dat, err := ioutil.ReadFile("./" + FileName)
 	if err != nil {
 		panic(err)
 	}
 
 	// Pares file
-	file, err := modfile.Parse(fileName, dat, nil)
+	file, err := modfile.Parse(FileName, dat, nil)
 	if err != nil {
 		panic(err)
 	}
 
 	// Colors
-	red := color.New(color.FgRed).SprintFunc()
-	yellow := color.New(color.FgYellow).SprintFunc()
-	blue := color.New(color.FgBlue).SprintFunc()
+	red := color.New(color.FgHiRed).SprintFunc()
+	yellow := color.New(color.FgHiYellow).SprintFunc()
+	green := color.New(color.FgHiGreen).SprintFunc()
 
-	var mods []*Mod
-	var options []string
+	var mods Mods
 
 	// Loop through required mods and exclude indirect ones
 	for _, r := range file.Require {
@@ -54,18 +55,26 @@ func main() {
 		}
 
 		mods = append(mods, mod)
-		optionStr := mod.Path + " " + mod.CurrentVersion.original + " " + mod.AvailableVersions[0].original
-		if mod.Status == "major" {
+
+	}
+
+	// Sort mods by status
+	sort.Sort(mods)
+
+	// Create options
+	var options []string
+	for _, m := range mods {
+		optionStr := m.Path + " " + m.CurrentVersion.original + " " + m.AvailableVersions[0].original
+		if m.Status == "major" {
 			options = append(options, red(optionStr))
-		} else if mod.Status == "minor" {
+		} else if m.Status == "minor" {
 			options = append(options, yellow(optionStr))
-		} else if mod.Status == "patch" {
-			options = append(options, blue(optionStr))
+		} else if m.Status == "patch" {
+			options = append(options, green(optionStr))
 		}
 	}
 
 	if len(options) == 0 {
-		green := color.New(color.FgGreen).SprintFunc()
 		fmt.Println(green("You are all up to date!!!"))
 		return
 	}
@@ -76,17 +85,18 @@ func main() {
 		Name: "checklist",
 		Help: "checklist prompt",
 		Func: func(c *ishell.Context) {
-			choices := c.Checklist(options, "What are your favourite programming languages ?", nil)
+			choices := c.Checklist(options, "Hit space to select packages you want to update. Ctrl + c to cancel\n"+green("Patch")+" "+yellow("Minor")+" "+red("Major"), nil)
 
-			for _, i := range choices {
-				c.Println(mods[i].Path, mods[i].CurrentVersion.original, mods[i].AvailableVersions[0].original, mods[i].Status)
+			if len(choices) > 0 && choices[0] != -1 {
+				for _, i := range choices {
+					c.Println(mods[i].Path, mods[i].CurrentVersion.original, mods[i].AvailableVersions[0].original, mods[i].Status)
+				}
 			}
+
+			shell.Close()
 		},
 	})
 
 	shell.Process("checklist")
-
-	// run shell
 	shell.Run()
-
 }
