@@ -31,11 +31,13 @@ func main() {
 	}
 
 	// Colors
-	red := color.New(color.FgHiRed).SprintFunc()
-	yellow := color.New(color.FgHiYellow).SprintFunc()
-	green := color.New(color.FgHiGreen).SprintFunc()
+	red := color.New(color.FgRed).SprintFunc()
+	yellow := color.New(color.FgYellow).SprintFunc()
+	green := color.New(color.FgGreen).SprintFunc()
 
 	var mods Mods
+	urlLength := 0
+	versionLength := 0
 
 	// Loop through required mods and exclude indirect ones
 	for _, r := range file.Require {
@@ -54,8 +56,15 @@ func main() {
 			continue
 		}
 
-		mods = append(mods, mod)
+		// Check url length for option padding
+		if urlLength < len(mod.Path) {
+			urlLength = len(mod.Path)
+		}
+		if versionLength < len(mod.CurrentVersion.original) {
+			versionLength = len(mod.CurrentVersion.original)
+		}
 
+		mods = append(mods, mod)
 	}
 
 	// Sort mods by status
@@ -64,13 +73,14 @@ func main() {
 	// Create options
 	var options []string
 	for _, m := range mods {
-		optionStr := m.Path + " " + m.CurrentVersion.original + " " + m.AvailableVersions[0].original
+		urlStr := strPadding(m.Path, urlLength) + "   "
+		versionStr := strPadding(m.CurrentVersion.original, versionLength) + " -> " + m.AvailableVersions[0].original
 		if m.Status == "major" {
-			options = append(options, red(optionStr))
+			options = append(options, red(urlStr)+versionStr)
 		} else if m.Status == "minor" {
-			options = append(options, yellow(optionStr))
+			options = append(options, yellow(urlStr)+versionStr)
 		} else if m.Status == "patch" {
-			options = append(options, green(optionStr))
+			options = append(options, green(urlStr)+versionStr)
 		}
 	}
 
@@ -85,11 +95,24 @@ func main() {
 		Name: "checklist",
 		Help: "checklist prompt",
 		Func: func(c *ishell.Context) {
-			choices := c.Checklist(options, "Hit space to select packages you want to update. Ctrl + c to cancel\n"+green("Patch")+" "+yellow("Minor")+" "+red("Major"), nil)
+			choices := c.Checklist(options, "Hit space to select modules you want to update. Ctrl + c to cancel\n"+green("Patch")+" "+yellow("Minor")+" "+red("Major"), nil)
 
 			if len(choices) > 0 && choices[0] != -1 {
+				c.ClearScreen()
+				c.Println(green("Modules that were updated!!!"))
 				for _, i := range choices {
-					c.Println(mods[i].Path, mods[i].CurrentVersion.original, mods[i].AvailableVersions[0].original, mods[i].Status)
+					err := file.AddReplace(mods[i].Path, mods[i].CurrentVersion.original, mods[i].Path, mods[i].AvailableVersions[0].original)
+					if err != nil {
+						c.Err(err)
+					}
+					c.Println(options[i])
+				}
+				file.Cleanup()
+
+				// Write back to file
+				err = ioutil.WriteFile("./"+FileName, dat, 644)
+				if err != nil {
+					c.Err(err)
 				}
 			}
 
