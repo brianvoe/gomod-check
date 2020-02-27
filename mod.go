@@ -49,7 +49,7 @@ func NewMod(path string, version string) (*Mod, error) {
 	}
 
 	// Get all available versions
-	vs := getProxyVersions(path)
+	vs := getProxyVersions(path, true)
 
 	// Lets make sure their is a latest version to get
 	if len(vs) == 0 {
