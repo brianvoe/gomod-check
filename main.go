@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/abiosoft/ishell"
-	"github.com/brianvoe/gofakeit"
 	"github.com/fatih/color"
 
 	"golang.org/x/mod/modfile"
@@ -16,8 +15,6 @@ import (
 var FileName = "go.mod"
 
 func main() {
-	gofakeit.BS()
-
 	// Read in go mod file
 	dat, err := ioutil.ReadFile("./" + FileName)
 	if err != nil {
@@ -108,6 +105,10 @@ func main() {
 					c.Println(options[i])
 				}
 				file.Cleanup()
+				dat, err := file.Format()
+				if err != nil {
+					c.Err(err)
+				}
 
 				// Write back to file
 				err = ioutil.WriteFile("./"+FileName, dat, 644)
