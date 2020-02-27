@@ -31,10 +31,12 @@ func main() {
 	red := color.New(color.FgRed).SprintFunc()
 	yellow := color.New(color.FgYellow).SprintFunc()
 	green := color.New(color.FgGreen).SprintFunc()
+	blue := color.New(color.FgBlue).SprintFunc()
 
 	var mods Mods
 	urlLength := 0
-	versionLength := 0
+	curVersionLength := 0
+	latestVersionLength := 0
 
 	// Loop through required mods and exclude indirect ones
 	for _, r := range file.Require {
@@ -57,8 +59,11 @@ func main() {
 		if urlLength < len(mod.Path) {
 			urlLength = len(mod.Path)
 		}
-		if versionLength < len(mod.CurrentVersion.original) {
-			versionLength = len(mod.CurrentVersion.original)
+		if curVersionLength < len(mod.CurrentVersion.cleanString()) {
+			curVersionLength = len(mod.CurrentVersion.cleanString())
+		}
+		if latestVersionLength < len(mod.AvailableVersions[0].cleanString()) {
+			latestVersionLength = len(mod.AvailableVersions[0].cleanString())
 		}
 
 		mods = append(mods, mod)
@@ -69,9 +74,14 @@ func main() {
 
 	// Create options
 	var options []string
+	hasIncompatible := false
 	for _, m := range mods {
 		urlStr := strPadding(m.Path, urlLength) + "   "
-		versionStr := strPadding(m.CurrentVersion.original, versionLength) + " -> " + m.AvailableVersions[0].original
+		versionStr := strPadding(m.CurrentVersion.cleanString(), curVersionLength) + " -> " + strPadding(m.AvailableVersions[0].cleanString(), latestVersionLength)
+		if m.AvailableVersions[0].incompatible {
+			versionStr += " " + blue("I")
+			hasIncompatible = true
+		}
 		if m.Status == "major" {
 			options = append(options, red(urlStr)+versionStr)
 		} else if m.Status == "minor" {
@@ -92,13 +102,18 @@ func main() {
 		Name: "checklist",
 		Help: "checklist prompt",
 		Func: func(c *ishell.Context) {
-			choices := c.Checklist(options, "Hit space to select modules you want to update. Ctrl + c to cancel\n"+green("Patch")+" "+yellow("Minor")+" "+red("Major"), nil)
+			text := "Hit space to select modules you want to update. Ctrl + c to cancel\n"
+			text += green("Patch") + " " + yellow("Minor") + " " + red("Major") + " "
+			if hasIncompatible {
+				text += blue("I = Incompatible")
+			}
+			choices := c.Checklist(options, text, nil)
 
 			if len(choices) > 0 && choices[0] != -1 {
 				c.ClearScreen()
 				c.Println(green("Modules that were updated!!!"))
 				for _, i := range choices {
-					err := file.AddReplace(mods[i].Path, mods[i].CurrentVersion.original, mods[i].Path, mods[i].AvailableVersions[0].original)
+					err := file.AddRequire(mods[i].Path, mods[i].AvailableVersions[0].original)
 					if err != nil {
 						c.Err(err)
 					}

@@ -25,10 +25,15 @@ type version struct {
 	major, minor, patch uint64
 	prerelease          string
 	metadata            string
+	incompatible        bool
 	original            string
 }
 
-func getProxyVersions(url string) versions {
+func (v *version) cleanString() string {
+	return fmt.Sprintf("v%d.%d.%d", v.major, v.minor, v.patch)
+}
+
+func getProxyVersions(url string, skipPrelease bool) versions {
 	resp, err := http.Get(fmt.Sprintf("https://proxy.golang.org/%s/@v/list", url))
 	if err != nil {
 		panic(err)
@@ -47,6 +52,9 @@ func getProxyVersions(url string) versions {
 		v, err := parseVersion(vss)
 		if err != nil {
 			// If has error parsing skip it
+			continue
+		}
+		if skipPrelease && v.prerelease != "" {
 			continue
 		}
 		vs = append(vs, v)
@@ -73,9 +81,10 @@ func parseVersion(v string) (*version, error) {
 	metadata := m[8]
 
 	sv := &version{
-		prerelease: prerelease,
-		metadata:   metadata,
-		original:   v,
+		prerelease:   prerelease,
+		metadata:     metadata,
+		original:     v,
+		incompatible: strings.Contains(v, "incompatible"),
 	}
 
 	// Major check
